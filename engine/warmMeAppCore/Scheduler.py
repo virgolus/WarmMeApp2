@@ -1,0 +1,94 @@
+#!/usr/bin/python3
+import sys
+import time
+
+def run():
+	# Vary
+	curTime = time.strftime("%H:%M:%S")
+	
+	# per ogni schedulazione attiva (manuale|schedulata)
+	try:
+		global con
+		con = mdb.connect('localhost', 'root', 'warmme', 'warmme');
+		cur = con.cursor()
+		
+		# Current temp
+		cur.execute("SELECT value from sensor_monitor_last")
+		curTemp = cur.fetchone()
+		print 'Current temperature: ' + str(curTemp[0])
+
+		# Activation type
+		cur.execute("SELECT type from activationTarget")
+		qryResult = cur.fetchone()
+
+		if qryResult[0] == 'MANUAL':
+			print 'Activation type: MANUAL'
+	        
+	               # Get manual activator
+			cur = con.cursor()
+			cur.execute("SELECT tempValue from activationManual")
+			manualActivator = cur.fetchone()
+			if manualActivator is None:
+				print "No manual temp set, set GPIO to low"
+				turnOff(curTemp[0]);
+			else:
+				print 'Target temperature: ' + str(manualActivator[0])
+				heatMe(curTemp[0], manualActivator[0])
+            
+		elif qryResult[0] == 'SCHEDULE':
+			print 'Activation type: SCHEDULE'
+
+			# Get shcedule activator
+			cur = con.cursor()
+			qry = "SELECT tempValue from activationSchedule where (startTime <= '" + str(curTime) + "' and endTime >= '" + str(curTime) + "') or ((endTime - startTime) < 0 and (('" + str(curTime) + "' >= startTime and '" + str(curTime) + "' < '23:59:59') or ('" + str(curTime) + "' < endTime)))"
+			cur.execute(qry)
+			scheduleActivator = cur.fetchone()
+			if scheduleActivator is None:
+				print "No schedule, set GPIO to low"
+				turnOff(curTemp[0]);
+			else:
+				print 'Target temperature: ' + str(scheduleActivator[0])
+				heatMe(curTemp[0], scheduleActivator[0])
+
+		elif qryResult[0] == 'OFF':
+			print 'Activation type: OFF'
+			print "set GPIO to low"
+			turnOff(curTemp[0]);
+
+	except mdb.Error, e:
+		print "Error %d: %s" % (e.args[0],e.args[1])
+		sys.exit(1)
+	finally:
+		if con:
+			con.close()
+
+def heatMe(curTemp, target):
+	cur = con.cursor()
+
+	if curTemp <= target - .3:
+		print 'status: HIGH'
+		GPIO.output(12, GPIO.HIGH)
+		cur.execute("INSERT into activationStatus (state,tempValue,zone_id) values ('ON',"+str(curTemp)+",1)")
+		con.commit()
+		cur = con.cursor()
+		cur.execute("Update activationStatusLast set state = 'ON', tempValue = "+str(curTemp))
+		con.commit()
+	elif curTemp > target + .3:
+		print 'status: LOW'
+		GPIO.output(12, GPIO.LOW)
+		cur = con.cursor()
+		cur.execute("INSERT into activationStatus (state,tempValue,zone_id) values ('OFF',"+str(curTemp)+",1)")
+		con.commit()
+		cur = con.cursor()
+		cur.execute("Update activationStatusLast set state = 'OFF', tempValue = "+str(curTemp))
+		con.commit()
+
+def turnOff(curTemp):
+	GPIO.output(12, GPIO.LOW)
+	cur = con.cursor()
+	cur.execute("INSERT into activationStatus (state,tempValue,zone_id) values ('OFF',"+str(curTemp)+",1)")
+	cur.execute("Update activationStatusLast set state = 'OFF', tempValue = "+str(curTemp))
+	con.commit()
+
+if __name__ == "__main__":
+	run()
