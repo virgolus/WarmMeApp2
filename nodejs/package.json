@@ -15,7 +15,7 @@
     "cors": "^2.8.4",
     "express": "^4.16.2",
     "gpio": "^0.2.7",
-    "jsonwebtoken": "^8.1.0",
+    "jsonwebtoken": "^9.0.0",
     "mongoose": "^4.13.9",
     "mqtt": "^2.15.1",
     "node-cron": "^1.2.1"
